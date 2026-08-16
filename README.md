@@ -16,16 +16,19 @@ as real infrastructure.
 
 ## Project phases
 
-| Phase | Focus | Doc |
-|---|---|---|
-| 1 | Schema design | [`docs/phase-1-schema-design.md`](docs/phase-1-schema-design.md) |
-| 2 | Ingestion (Excel → Postgres) | [`docs/phase-2-ingestion.md`](docs/phase-2-ingestion.md) |
-| 3 | Transformation (dbt) | `docs/phase-3-transformation.md` |
-| 4 | Orchestration (GitHub Actions) | `docs/phase-4-orchestration.md` |
-| 5 | Dashboard | `docs/phase-5-dashboard.md` |
-| 6 | ML (optional) | `docs/phase-6-ml.md` |
 
-Full architecture decisions and conventions live in [`PROJECT_PLAN.md`](PROJECT_PLAN.md).
+| Phase | Focus                          | Doc                                                              |
+| ----- | ------------------------------ | ---------------------------------------------------------------- |
+| 1     | Schema design                  | `[docs/phase-1-schema-design.md](docs/phase-1-schema-design.md)` |
+| 2     | Ingestion (Excel → Postgres)   | `[docs/phase-2-ingestion.md](docs/phase-2-ingestion.md)`         |
+| 3     | Transformation (dbt)           | `docs/phase-3-transformation.md`                                 |
+| 4     | Orchestration (GitHub Actions) | `docs/phase-4-orchestration.md`                                  |
+| 5     | Dashboard                      | `docs/phase-5-dashboard.md`                                      |
+
+
+
+
+Full architecture decisions and conventions live in `[PROJECT_PLAN.md](PROJECT_PLAN.md)`.
 
 ## Quickstart (Phase 1 — schema only, so far)
 
