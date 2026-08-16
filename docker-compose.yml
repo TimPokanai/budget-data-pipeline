@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: budget_pipeline_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: budget_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+      POSTGRES_DB: budget_pipeline
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
