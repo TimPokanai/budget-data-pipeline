@@ -39,8 +39,11 @@ budget-pipeline/
     ├── phase-5-dashboard.md
     └── phase-6-ml.md
 └── ingest/
+    ├── cli.py
     ├── config.py
-    └── parser.py      (coming soon)
+    ├── loader.py
+    ├── parser.py
+    └── validator.py
 ├── .env.example
 ├── .gitignore
 ├── docker-compose.yml
@@ -81,4 +84,4 @@ worse than a blocked delete.
 3. **Transformation** — dbt models replacing the sheet's `SUMIFS` logic
 4. **Orchestration** — scheduled, automated pipeline runs via GitHub Actions
 5. **Dashboard** — replaces the `Monthly Budget Summary` sheet
-
+6. **Looking beyond...** - what's coming next
