@@ -26,28 +26,171 @@ as real infrastructure.
 | 5     | Dashboard                      | `docs/phase-5-dashboard.md`                                      |
 
 
-
-
 Full architecture decisions and conventions live in `[PROJECT_PLAN.md](PROJECT_PLAN.md)`.
 
-## Quickstart (Phase 1 — schema only, so far)
+## Local development setup (macOS)
+
+A from-scratch walkthrough for a Mac with none of this installed yet. Already have a
+tool below? Skip that step. This brings you from a bare machine to a working copy of
+everything built through Phase 2 (schema + ingestion).
+
+**1. Install Homebrew**, if you don't have it:
 
 ```bash
-# 1. Start local Postgres
-docker compose up -d
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 
-# 2. Copy env template and fill in values
+Follow the installer's own instructions for adding `brew` to your `PATH` — they differ
+for Apple Silicon vs. Intel Macs.
+
+**2. Install Docker Desktop**, and actually start it:
+
+```bash
+brew install --cask docker
+```
+
+Open **Docker.app** from `/Applications` once so it finishes first-run setup and starts
+the Docker daemon. `docker compose` (below) fails silently otherwise — check for the
+whale icon in the menu bar before moving on.
+
+**3. Install Miniconda, dbmate, and psql**:
+
+```bash
+brew install --cask miniconda
+brew install dbmate libpq
+brew link --force libpq   # puts `psql` on your PATH; libpq is keg-only by default
+
+conda init zsh   # or `bash`, matching your shell -- restart your terminal after this
+```
+
+Miniconda manages the Python environment (used below instead of `venv`); `dbmate`
+applies everything in `db/migrations/`; `psql` is used below for seeding and one-off
+queries.
+
+**4. Clone the repo and set up a conda environment**:
+
+```bash
+git clone <repo-url> budget-pipeline
+cd budget-pipeline
+
+conda create -n budget-pipeline python=3.12 -y
+conda activate budget-pipeline
+pip install -r requirements.txt
+```
+
+`requirements.txt` is installed via `pip` inside the conda env rather than
+`conda install` package-by-package — simpler, and it's what's already pinned. Any new
+terminal session needs `conda activate budget-pipeline` again before running the
+ingestion script below.
+
+**5. Configure environment variables**:
+
+```bash
 cp .env.example .env
+```
 
-# 3. Install dbmate (migration tool) if you don't have it
-brew install dbmate   # or see https://github.com/amacneil/dbmate#installation
+Open `.env` and fill in:
 
-# 4. Run migrations against local Postgres
+- `POSTGRES_PASSWORD` — any password for local dev; `docker-compose.yml` reads this
+directly to initialize the container.
+- `DATABASE_URL` — must embed that **same password**. User and database name are fixed
+by `docker-compose.yml` (`budget_admin` / `budget_pipeline`), so only the password
+and host/port are yours to set.
+- `NEON_DATABASE_URL` — can stay a placeholder until you're actually pointing at Neon.
+
+**Load** `.env` **into your shell.** Creating the file above doesn't make these
+variables available to commands — Docker Compose reads `.env` automatically for its
+own substitution, but `dbmate`, `psql`, and the ingestion script all expect real shell
+environment variables, which nothing does for you automatically:
+
+```bash
+set -a
+source .env
+set +a
+
+echo "$DATABASE_URL"   # sanity check -- should print the URL, not blank
+```
+
+Do this in every new terminal session before running the commands below (or use
+`[direnv](https://direnv.net/)` to automate it per-directory). If a command downstream
+fails with something like `connection to server on socket "/tmp/.s.PGSQL.5432" failed`,
+that's `$DATABASE_URL` being empty — come back and re-run this.
+
+**6. Start local Postgres**:
+
+```bash
+docker compose up -d
+docker compose ps   # confirm it's Up before continuing
+```
+
+First run pulls the `postgres:16` image, so it can take a minute.
+
+**7. Apply migrations and seed reference data**:
+
+```bash
 dbmate --url "$DATABASE_URL" up
-
-# 5. Load reference category data
 psql "$DATABASE_URL" -f db/seed_categories.sql
 ```
 
-To point the same migrations at your free-tier Neon project instead, run step 4 with
-`NEON_DATABASE_URL` in place of `DATABASE_URL`.
+`dbmate up` applies every file in `db/migrations/` in order — this now includes Phase
+2's `dedup_key` migration on top of Phase 1's four tables.
+
+**8. Verify the pipeline end-to-end**:
+
+```bash
+# Dry-run against a real workbook -- validates without touching the DB
+python -m ingest.cli --file monthly_spreadsheet_Aug_26.xlsx --dry-run
+
+# Actually load it
+python -m ingest.cli --file monthly_spreadsheet_Aug_26.xlsx --env local
+```
+
+A `status=success` log line means local setup is done. Spot-check it:
+
+```bash
+psql "$DATABASE_URL" -c "SELECT * FROM import_batches ORDER BY id DESC LIMIT 1;"
+```
+
+**(Optional) Point the same migrations and a load at Neon**:
+
+```bash
+dbmate --url "$NEON_DATABASE_URL" up
+psql "$NEON_DATABASE_URL" -f db/seed_categories.sql
+python -m ingest.cli --file monthly_spreadsheet_Aug_26.xlsx --env neon
+```
+
+
+
+## Docker command reference
+
+Everyday commands for the local Postgres container (`docker-compose.yml` names the
+service `postgres`, the container `budget_pipeline_db`).
+
+
+| Task                                          | Command                                                                                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Start Postgres in the background              | `docker compose up -d`                                                                                                                |
+| Stop Postgres, keep data                      | `docker compose down`                                                                                                                 |
+| Stop Postgres, **wipe all data**              | `docker compose down -v`                                                                                                              |
+| Check container status                        | `docker compose ps`                                                                                                                   |
+| Tail Postgres logs                            | `docker compose logs -f postgres`                                                                                                     |
+| Restart just Postgres                         | `docker compose restart postgres`                                                                                                     |
+| Open a `psql` shell inside the container      | `docker exec -it budget_pipeline_db psql -U budget_admin -d budget_pipeline`                                                          |
+| Run a SQL file against the container directly | `docker exec -i budget_pipeline_db psql -U budget_admin -d budget_pipeline < path/to/file.sql`                                        |
+| Inspect the data volume                       | `docker volume inspect budget-pipeline_pgdata`                                                                                        |
+| Live resource usage (CPU/mem)                 | `docker stats budget_pipeline_db`                                                                                                     |
+| Full reset — fresh DB from scratch            | `docker compose down -v && docker compose up -d && dbmate --url "$DATABASE_URL" up && psql "$DATABASE_URL" -f db/seed_categories.sql` |
+
+
+A few things worth knowing before using these:
+
+- `docker compose down -v` deletes the `pgdata` volume — every transaction and budget
+row goes with it. Handy when local state has drifted from what you're testing;
+never point the `-v` flag at Neon, since there's no volume to delete there and
+it's not what this command targets anyway.
+- `budget_pipeline_db` is fixed by `docker-compose.yml`'s `container_name`, so these
+commands work regardless of what you name the Compose project or service.
+- The volume name follows Compose's `<project-dir>_<volume-key>` convention. If your
+local clone isn't in a directory named `budget-pipeline`, run `docker volume ls`
+first to get the actual name before using `docker volume inspect` directly.
+

@@ -11,6 +11,7 @@ mis-copied filename.
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -85,9 +86,20 @@ def read_workbook(path: Path, budget_month_override: date | None = None) -> Pars
 
     budget_month = budget_month_override or derive_budget_month(path)
 
-    transactions = xl.parse("Expense Tracker")
-    budget_summary = xl.parse("Monthly Budget Summary")
-    categories = xl.parse("Categories")
+    # openpyxl warns that it can't parse the newer "data validation extension"
+    # format Excel uses for the Category dropdown on Expense Tracker. That's a
+    # UI/authoring feature (the dropdown itself), not the underlying cell
+    # values -- irrelevant since we only ever read this file, never write it
+    # back out. Suppressed here rather than left to print on every run.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Data Validation extension is not supported and will be removed",
+            category=UserWarning,
+        )
+        transactions = xl.parse("Expense Tracker")
+        budget_summary = xl.parse("Monthly Budget Summary")
+        categories = xl.parse("Categories")
 
     expected_txn_cols = {"Date", "Description", "Category", "Amount (CAD)"}
     if not expected_txn_cols.issubset(transactions.columns):

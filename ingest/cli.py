@@ -95,10 +95,13 @@ def run(argv: list[str] | None = None) -> int:
     for err in budget_result.errors:
         log.warning("[budgets] %s", err)
 
+    budget_category_rows = len(workbook.budget_summary) - budget_result.excluded
     log.info(
-        "Validation: %d/%d transaction rows valid, %d/%d budget rows valid",
+        "Validation: %d/%d transaction rows valid, %d/%d budget category rows valid "
+        "(%d non-category row(s) excluded, e.g. 'Total')",
         len(txn_result.valid), len(workbook.transactions),
-        len(budget_result.valid), len(workbook.budget_summary),
+        len(budget_result.valid), budget_category_rows,
+        budget_result.excluded,
     )
 
     has_errors = not (txn_result.ok and budget_result.ok)

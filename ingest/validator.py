@@ -45,6 +45,7 @@ class RowError:
 class ValidationResult:
     valid: pd.DataFrame
     errors: list[RowError] = field(default_factory=list)
+    excluded: int = 0  # rows intentionally skipped (not errors) -- see validate_budgets
 
     @property
     def ok(self) -> bool:
@@ -106,13 +107,17 @@ def validate_budgets(
 ) -> ValidationResult:
     """Validates the `Monthly Budget Summary` sheet's Planned column, which
     feeds the `budgets` table. The Total row is dropped, not an error --
-    it's a derived aggregate the sheet keeps for human eyes, not a category."""
+    it's a derived aggregate the sheet keeps for human eyes, not a category.
+    Counted separately as `excluded` so callers can report "N/N category
+    rows valid" instead of a misleading "N/(N+1)" that reads like a failure."""
     errors: list[RowError] = []
     keep = []
+    excluded = 0
 
     for idx, row in df.iterrows():
         category = str(row["Category"]).strip() if pd.notna(row["Category"]) else ""
         if category == TOTAL_ROW_LABEL:
+            excluded += 1
             continue
 
         reasons = []
@@ -128,4 +133,4 @@ def validate_budgets(
         else:
             keep.append(idx)
 
-    return ValidationResult(valid=df.loc[keep].copy(), errors=errors)
+    return ValidationResult(valid=df.loc[keep].copy(), errors=errors, excluded=excluded)
