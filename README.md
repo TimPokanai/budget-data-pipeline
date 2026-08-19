@@ -21,7 +21,7 @@ as real infrastructure.
 | ----- | ------------------------------ | ---------------------------------------------------------------- |
 | 1     | Schema design                  | `[docs/phase-1-schema-design.md](docs/phase-1-schema-design.md)` |
 | 2     | Ingestion (Excel → Postgres)   | `[docs/phase-2-ingestion.md](docs/phase-2-ingestion.md)`         |
-| 3     | Transformation (dbt)           | `docs/phase-3-transformation.md`                                 |
+| 3     | Transformation (dbt)           | `[docs/phase-3-transformation.md](docs/phase-3-transformation.md)` |
 | 4     | Orchestration (GitHub Actions) | `docs/phase-4-orchestration.md`                                  |
 | 5     | Dashboard                      | `docs/phase-5-dashboard.md`                                      |
 
@@ -32,7 +32,7 @@ Full architecture decisions and conventions live in `[PROJECT_PLAN.md](PROJECT_P
 
 A from-scratch walkthrough for a Mac with none of this installed yet. Already have a
 tool below? Skip that step. This brings you from a bare machine to a working copy of
-everything built through Phase 2 (schema + ingestion).
+everything built through Phase 3 (schema + ingestion + transformation).
 
 **1. Install Homebrew**, if you don't have it:
 
@@ -97,6 +97,10 @@ directly to initialize the container.
 by `docker-compose.yml` (`budget_admin` / `budget_pipeline`), so only the password
 and host/port are yours to set.
 - `NEON_DATABASE_URL` — can stay a placeholder until you're actually pointing at Neon.
+- `NEON_PGHOST` / `NEON_PGUSER` / `NEON_PGPASSWORD` / `NEON_PGDATABASE` — only needed
+once you're running dbt against Neon (step 9 below); dbt-postgres wants these as
+discrete fields rather than the single `NEON_DATABASE_URL` string. Can also stay
+placeholders until then.
 
 **Load** `.env` **into your shell.** Creating the file above doesn't make these
 variables available to commands — Docker Compose reads `.env` automatically for its
@@ -135,7 +139,7 @@ psql "$DATABASE_URL" -f db/seed_categories.sql
 `dbmate up` applies every file in `db/migrations/` in order — this now includes Phase
 2's `dedup_key` migration on top of Phase 1's four tables.
 
-**8. Verify the pipeline end-to-end**:
+**8. Verify the ingestion pipeline end-to-end**:
 
 ```bash
 # Dry-run against a real workbook -- validates without touching the DB
@@ -151,12 +155,65 @@ A `status=success` log line means local setup is done. Spot-check it:
 psql "$DATABASE_URL" -c "SELECT * FROM import_batches ORDER BY id DESC LIMIT 1;"
 ```
 
-**(Optional) Point the same migrations and a load at Neon**:
+**9. Install dbt and build the transformation layer** (Phase 3):
+
+```bash
+cd dbt
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+dbt deps
+```
+
+dbt's dependencies live in their own virtualenv here rather than the
+`budget-pipeline` conda env used above — dbt-core pins a lot of its own transitive
+dependencies, and keeping it isolated avoids a version fight with the ingestion
+script's pins. `dbt deps` installs `dbt_utils`, used by a couple of the schema tests.
+
+Configure dbt's connection:
+
+```bash
+cp profiles.yml.example profiles.yml
+```
+
+Fill in the `local` target — it reuses the same `budget_admin` user and reads
+`POSTGRES_PASSWORD` from the `.env` you already sourced in step 5, so there's nothing
+new to fill in there. `profiles.yml` is gitignored, same as `.env` at the repo root —
+never commit it.
+
+Build and test everything:
+
+```bash
+dbt debug --target local   # sanity-check the connection before building anything
+dbt build --target local
+```
+
+`dbt build` runs every model in dependency order and then every test — look for every
+model and test to report `OK`/`PASS`, with 0 errors. dbt creates the `staging` and
+`marts` schemas itself on first run, which needs the connecting role to have `CREATE`
+on the database (true by default for `budget_admin`).
+
+Spot-check it the same way step 8 spot-checked ingestion:
+
+```bash
+psql "$DATABASE_URL" -c "SELECT * FROM marts.fct_budget_actuals ORDER BY budget_month, category_name;"
+```
+
+`deactivate` this venv and `conda activate budget-pipeline` again before going back to
+the ingestion script in a fresh terminal — the two environments are kept separate on
+purpose (see above).
+
+**(Optional) Point the same migrations, ingestion, and dbt build at Neon**:
 
 ```bash
 dbmate --url "$NEON_DATABASE_URL" up
 psql "$NEON_DATABASE_URL" -f db/seed_categories.sql
 python -m ingest.cli --file monthly_spreadsheet_Aug_26.xlsx --env neon
+
+# dbt against the same Neon project -- needs NEON_PGHOST/NEON_PGUSER/NEON_PGPASSWORD/
+# NEON_PGDATABASE filled in from step 5 (dbt-postgres takes discrete connection
+# fields, not the single NEON_DATABASE_URL string dbmate/psycopg2 use)
+cd dbt && dbt build --target neon
 ```
 
 

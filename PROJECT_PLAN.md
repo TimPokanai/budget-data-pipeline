@@ -18,6 +18,7 @@ orchestration, and a dashboard, with an optional ML layer once the pipeline is s
 | Always-on database      | [Neon](https://neon.tech) (free tier, serverless Postgres)    | Genuinely internet-reachable 24/7 at $0/month via scale-to-zero — compute suspends after 5 minutes idle and wakes in milliseconds on the next query. No server to patch or pay for.                       |
 | Source data             | Manual daily entry (Excel)                                    | >90% of transactions are credit card; the bank's native export only covers chequing cleanly. Ingestion is built source-agnostic so a bank-CSV feed can be added later as a second source, not a redesign. |
 | Migration tool          | [dbmate](https://github.com/amacneil/dbmate)                  | Single static binary, database-agnostic, plain versioned SQL (no ORM abstraction to explain), applies identically to local Docker and Neon.                                                               |
+| Transformation tool     | [dbt](https://www.getdbt.com) (`dbt-postgres` adapter)        | Versioned, tested SQL models instead of the workbook's `SUMIFS`/`Difference` formulas; same local/Neon split as everything else, via `--target`.                                                          |
 | Orchestration (Phase 4) | GitHub Actions, scheduled workflow                            | Free compute, runs without a personal machine powered on, doubles as CI/CD experience on the resume.                                                                                                      |
 | Amount convention       | Signed `NUMERIC(10,2)`, positive = income, negative = expense | Inherited directly from the source workbook — avoids a redundant transaction-type column when the sign already encodes it.                                                                                |
 
@@ -31,13 +32,23 @@ budget-pipeline/
 ├── db/
 │   ├── migrations/          # versioned schema, dbmate-managed
 │   └── seed_categories.sql  # reference data
-└── docs/
-    ├── phase-1-schema-design.md
-    ├── phase-2-ingestion.md
-    ├── phase-3-transformation.md      (coming next)
-    ├── phase-4-orchestration.md
-    ├── phase-5-dashboard.md
-    └── phase-6-ml.md
+├── dbt/
+│   ├── dbt_project.yml
+│   ├── packages.yml         # dbt_utils
+│   ├── profiles.yml.example # copy to profiles.yml, gitignored
+│   ├── requirements.txt
+│   ├── macros/
+│   ├── models/
+│   │   ├── staging/         # stg_* -- 1:1 renamed views over raw tables
+│   │   └── marts/           # dim_*/fct_* -- what everything else reads
+│   └── tests/                # singular (non-schema) tests
+├── docs/
+│   ├── phase-1-schema-design.md
+│   ├── phase-2-ingestion.md
+│   ├── phase-3-transformation.md
+│   ├── phase-4-orchestration.md
+│   ├── phase-5-dashboard.md
+│   └── phase-6-ml.md
 └── ingest/
     ├── cli.py
     ├── config.py
@@ -56,14 +67,17 @@ budget-pipeline/
 
 ## Environment strategy
 
-Two Postgres instances share one migrations directory:
+Two Postgres instances share one migrations directory, and now one dbt project:
 
 - `DATABASE_URL` — local Docker Postgres, for development and testing.
 - `NEON_DATABASE_URL` — Neon free-tier project, the always-addressable copy used
 by scheduled pipeline runs and any deployed dashboard.
 
-Applying a migration to either is the same command with a different `--url`, which
-keeps the two environments provably identical rather than drifting apart.
+Applying a migration to either is the same command with a different `--url`, running
+ingestion against either is the same command with a different `--env`, and building
+dbt models against either is the same command with a different `--target` — three
+tools, one local/Neon split, kept deliberately uniform rather than each inventing its
+own flag name.
 
 ## Naming conventions (binding for every phase)
 
@@ -74,6 +88,8 @@ keeps the two environments provably identical rather than drifting apart.
 - Every foreign key is `ON DELETE RESTRICT` unless a phase doc explicitly says
 otherwise and explains why — silent data loss on a personal finance dataset is
 worse than a blocked delete.
+- dbt staging models: `stg_<source_table>`, 1:1 grain, renaming/casting only.
+  dbt marts: `dim_<entity>` / `fct_<entity>`. See `docs/phase-3-transformation.md`.
 
 
 
