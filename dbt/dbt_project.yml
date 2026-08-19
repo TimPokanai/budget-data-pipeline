@@ -1,0 +1,29 @@
+name: 'budget_pipeline'
+version: '1.0.0'
+config-version: 2
+
+# Matches the profile name in profiles.yml.example / ~/.dbt/profiles.yml
+profile: 'budget_pipeline'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Two-layer structure -- see docs/phase-3-transformation.md.
+# staging: 1:1 views over the raw tables, renamed/typed, no joins.
+# marts:   business-facing tables (dims + facts), what everything else reads.
+models:
+  budget_pipeline:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts

@@ -1,0 +1,81 @@
+version: 2
+
+sources:
+  - name: budget_pipeline
+    description: >
+      Raw operational tables from the Phase 1 migrations, populated by
+      db/seed_categories.sql (categories) and the Phase 2 ingestion script
+      (ingest/loader.py -- transactions, budgets, import_batches). dbt
+      treats these as read-only inputs; nothing in this project writes
+      back to them.
+    database: "{{ target.dbname }}"
+    schema: public
+
+    tables:
+      - name: categories
+        description: >
+          Category dimension, seeded once via db/seed_categories.sql
+          (see docs/phase-1-schema-design.md).
+        columns:
+          - name: id
+            tests: [unique, not_null]
+          - name: name
+            tests: [unique, not_null]
+          - name: type
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['income', 'expense']
+
+      - name: transactions
+        description: >
+          One row per transaction, loaded by
+          ingest/loader.py::upsert_transactions. Idempotent on dedup_key
+          (see docs/phase-2-ingestion.md).
+        loaded_at_field: created_at
+        freshness:
+          # Loose thresholds -- entry is still manual and Phase 4's
+          # scheduler doesn't exist yet, so "not touched in ~6 weeks"
+          # is the useful signal, not "not touched today."
+          warn_after: {count: 45, period: day}
+          error_after: {count: 90, period: day}
+        columns:
+          - name: id
+            tests: [unique, not_null]
+          - name: category_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('budget_pipeline', 'categories')
+                  field: id
+          - name: dedup_key
+            tests: [unique, not_null]
+
+      - name: budgets
+        description: >
+          Planned amount per (category, month), upserted by
+          ingest/loader.py::upsert_budgets -- Planned is overwritten in
+          place on re-run, not appended, so this table has no history of
+          prior plans (see docs/phase-3-transformation.md open questions).
+        columns:
+          - name: id
+            tests: [unique, not_null]
+          - name: category_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('budget_pipeline', 'categories')
+                  field: id
+
+      - name: import_batches
+        description: >
+          One row per ingestion run -- lineage, not yet consumed by any
+          mart (staged now for a future ops view; see
+          docs/phase-3-transformation.md).
+        columns:
+          - name: id
+            tests: [unique, not_null]
+          - name: status
+            tests:
+              - accepted_values:
+                  values: ['success', 'partial', 'failed']

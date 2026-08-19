@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: dim_categories
+    description: One row per budget category. Grain matches `categories`.
+    columns:
+      - name: category_id
+        tests: [unique, not_null]
+      - name: category_type
+        tests:
+          - accepted_values:
+              values: ['income', 'expense']
+
+  - name: fct_transactions
+    description: >
+      One row per transaction, denormalized with its category. Replaces
+      the source workbook's implicit category lookup on `Expense Tracker`.
+    columns:
+      - name: transaction_id
+        tests: [unique, not_null]
+      - name: category_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_categories')
+              field: category_id
+
+  - name: fct_budget_actuals
+    description: >
+      One row per (category, month): planned amount, actual amount summed
+      from fct_transactions, and their difference. Replaces the source
+      workbook's `Monthly Budget Summary` sheet -- see
+      docs/phase-3-transformation.md for the design decisions behind it.
+    columns:
+      - name: category_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_categories')
+              field: category_id
+      - name: budget_month
+        tests:
+          - not_null
+      - name: actual_amount
+        tests:
+          - not_null
+    tests:
+      # One row per category per month, mirroring the
+      # budgets_unique_category_month constraint from Phase 1 -- if this
+      # ever fires, the full outer join above has a bug, not the data.
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - category_id
+            - budget_month

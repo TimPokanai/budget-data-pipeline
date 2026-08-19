@@ -1,7 +1,54 @@
+# --- Secrets ---
 .env
 
-# dbt (Phase 3)
+# --- Personal source data ---
+# Monthly workbooks (Phase 1/2 source data) and any bank CSV export (the
+# source='td_csv' path PROJECT_PLAN.md reserves for later) are real
+# personal financial data -- never meant to be committed to a public
+# portfolio repo. This also catches deliberately corrupted test copies
+# used in docs/testing-guide.md's regression steps.
+# If you ever want one scrubbed sample checked in for people cloning the
+# repo to try, add an explicit exception, e.g.:
+#   !docs/sample_data/monthly_spreadsheet_sample.xlsx
+*.xlsx
+*.xls
+*.csv
+!dbt/seeds/**/*.csv
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# --- dbt (Phase 3) ---
 dbt/profiles.yml
 dbt/target/
 dbt/dbt_packages/
+dbt/dbt_modules/   # legacy package dir name, pre-dbt 1.0 -- harmless to keep
 dbt/logs/
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# --- Misc ---
+*.log
+Thumbs.db

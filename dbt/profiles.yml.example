@@ -1,0 +1,34 @@
+# Copy this to dbt/profiles.yml (or ~/.dbt/profiles.yml) and fill in real
+# values. dbt/profiles.yml is gitignored -- never commit it, same rule as
+# .env at the project root.
+#
+# Two targets, mirroring the --env flag ingest/cli.py already uses and the
+# --url flag dbmate already uses -- one more place, same local/neon split.
+budget_pipeline:
+  target: local
+  outputs:
+
+    local:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: budget_admin
+      pass: "{{ env_var('POSTGRES_PASSWORD') }}"
+      dbname: budget_pipeline
+      schema: public   # overridden per-model by +schema in dbt_project.yml
+      threads: 4
+
+    neon:
+      type: postgres
+      # dbt-postgres needs discrete host/user/pass/dbname fields, not a
+      # single connection string, so these are the same Neon project as
+      # NEON_DATABASE_URL in .env, just unpacked into NEON_PG* vars --
+      # see .env.example.
+      host: "{{ env_var('NEON_PGHOST') }}"
+      port: 5432
+      user: "{{ env_var('NEON_PGUSER') }}"
+      pass: "{{ env_var('NEON_PGPASSWORD') }}"
+      dbname: "{{ env_var('NEON_PGDATABASE') }}"
+      schema: public
+      threads: 4
+      sslmode: require

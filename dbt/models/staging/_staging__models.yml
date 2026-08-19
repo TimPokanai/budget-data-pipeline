@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: stg_categories
+    description: One row per category. Grain and row count match `categories`.
+    columns:
+      - name: category_id
+        tests: [unique, not_null]
+      - name: category_name
+        tests: [unique, not_null]
+      - name: category_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['income', 'expense']
+
+  - name: stg_transactions
+    description: One row per transaction. Grain and row count match `transactions`.
+    columns:
+      - name: transaction_id
+        tests: [unique, not_null]
+      - name: dedup_key
+        tests: [unique, not_null]
+      - name: category_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_categories')
+              field: category_id
+
+  - name: stg_budgets
+    description: One row per (category, month) plan. Grain and row count match `budgets`.
+    columns:
+      - name: budget_id
+        tests: [unique, not_null]
+      - name: category_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_categories')
+              field: category_id
+
+  - name: stg_import_batches
+    description: One row per ingestion run. Grain and row count match `import_batches`.
+    columns:
+      - name: import_batch_id
+        tests: [unique, not_null]
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['success', 'partial', 'failed']

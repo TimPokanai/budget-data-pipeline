@@ -1,0 +1,11 @@
+# Kept separate from the root requirements.txt (ingest/'s dependencies) on
+# purpose -- dbt-core pins a lot of its own transitive dependencies
+# (Jinja2, click, etc.) that can fight with the ingestion script's pins if
+# both live in one environment. Use a separate virtualenv for dbt:
+#
+#   cd dbt
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+#
+dbt-core>=1.8,<2.0
+dbt-postgres>=1.8,<2.0
