@@ -29,6 +29,10 @@ orchestration, and a dashboard, with an optional ML layer once the pipeline is s
 
 ```
 budget-pipeline/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                  # push/PR regression suite, ephemeral Postgres
+│       └── scheduled-refresh.yml   # daily dbt build + source freshness, Neon
 ├── db/
 │   ├── migrations/          # versioned schema, dbmate-managed
 │   └── seed_categories.sql  # reference data
@@ -48,13 +52,25 @@ budget-pipeline/
 │   ├── phase-3-transformation.md
 │   ├── phase-4-orchestration.md
 │   ├── phase-5-dashboard.md
-│   └── phase-6-ml.md
-└── ingest/
-    ├── cli.py
-    ├── config.py
-    ├── loader.py
-    ├── parser.py
-    └── validator.py
+│   ├── phase-6-ml.md
+│   └── testing-guide.md
+├── ingest/
+│   ├── cli.py
+│   ├── config.py
+│   ├── loader.py
+│   ├── parser.py
+│   └── validator.py
+├── scripts/
+│   └── ci/                          # Phase 4 -- fixture generation + regression scripts
+│       ├── fixture_data.py
+│       ├── generate_fixture_workbook.py
+│       ├── generate_corrupted_fixtures.py
+│       ├── check_constraints.sh
+│       ├── check_corrupted_fixtures.sh
+│       └── check_sign_convention_dbt_test.sh
+├── tests/
+│   └── fixtures/                    # generated at CI runtime, gitignored -- not committed
+│       └── corrupted/
 ├── .env.example
 ├── .gitignore
 ├── docker-compose.yml
