@@ -1,6 +1,6 @@
 # Personal Budget Data Pipeline
 
-[CI](https://github.com/TimPokanai/budget-pipeline/actions/workflows/ci.yml)
+[CI](https://github.com/TimPokanai/budget-data-pipeline/actions/workflows/ci.yml)
 
 A personal monthly budget, originally tracked by hand in Excel, rebuilt as a proper
 data pipeline: normalized Postgres schema → automated ingestion → dbt transforms →
