@@ -1,0 +1,138 @@
+# Phase 4 CI -- runs the full regression suite from docs/testing-guide.md
+# (Phases 1-3) against a throwaway Postgres service container, using the
+# synthetic fixture workbook from scripts/ci/, never real financial data.
+# See docs/phase-4-orchestration.md for the design rationale.
+#
+# This workflow never touches Neon and never ingests a real monthly
+# workbook -- see scheduled-refresh.yml for the job that runs against Neon.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+env:
+  # Ephemeral, single-run Postgres service container -- not a credential
+  # worth a secret. Never reused outside this job.
+  POSTGRES_PASSWORD: ci_ephemeral_password
+  DATABASE_URL: postgres://budget_admin:ci_ephemeral_password@localhost:5432/budget_pipeline?sslmode=disable
+
+jobs:
+  pipeline-regression:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: budget_admin
+          POSTGRES_PASSWORD: ci_ephemeral_password
+          POSTGRES_DB: budget_pipeline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budget_admin -d budget_pipeline"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install ingestion dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install dbmate
+        run: |
+          curl -fsSL -o /usr/local/bin/dbmate \
+            https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
+          chmod +x /usr/local/bin/dbmate
+          dbmate --version
+
+      # --- Phase 1: schema ---------------------------------------------
+
+      - name: Apply migrations
+        run: dbmate --url "$DATABASE_URL" --migrations-dir db/migrations up
+
+      - name: Migration rollback/reapply regression (testing-guide Phase 1 #1)
+        run: |
+          for i in 1 2 3 4; do
+            dbmate --url "$DATABASE_URL" --migrations-dir db/migrations down
+          done
+          dbmate --url "$DATABASE_URL" --migrations-dir db/migrations up
+
+      - name: Seed categories
+        run: psql "$DATABASE_URL" -f db/seed_categories.sql
+
+      - name: Constraint regression checks (testing-guide Phase 1 #2)
+        run: bash scripts/ci/check_constraints.sh
+
+      # --- Phase 2: ingestion --------------------------------------------
+
+      - name: Generate synthetic fixture workbooks
+        working-directory: scripts/ci
+        run: |
+          python generate_fixture_workbook.py
+          python generate_corrupted_fixtures.py
+
+      - name: Offline dry-run fallback still works (testing-guide Phase 2 #1)
+        env:
+          DATABASE_URL: ""
+        run: |
+          python -m ingest.cli --file tests/fixtures/monthly_spreadsheet_Jan_25.xlsx --dry-run
+
+      - name: Row-level validation regression (testing-guide Phase 2 #2)
+        run: bash scripts/ci/check_corrupted_fixtures.sh
+
+      - name: Ingest fixture workbook
+        run: python -m ingest.cli --file tests/fixtures/monthly_spreadsheet_Jan_25.xlsx --env local
+
+      - name: Idempotent re-ingestion check (testing-guide Phase 2 #3)
+        run: |
+          output="$(python -m ingest.cli --file tests/fixtures/monthly_spreadsheet_Jan_25.xlsx --env local 2>&1)"
+          echo "$output"
+          echo "$output" | grep -qE "0 new transactions inserted \(25 already present\)" || {
+            echo "Expected the second ingest of the same file to insert 0 new transactions.";
+            exit 1;
+          }
+
+      # --- Phase 3: transformation ----------------------------------------
+
+      - name: Install dbt dependencies
+        run: pip install -r dbt/requirements.txt
+
+      - name: Configure dbt profile
+        run: cp dbt/profiles.yml.example dbt/profiles.yml
+
+      - name: dbt deps
+        working-directory: dbt
+        run: dbt deps
+
+      - name: dbt build (testing-guide Phase 3 #1)
+        working-directory: dbt
+        run: dbt build --target local
+
+      - name: Idempotent dbt rebuild (testing-guide Phase 3 #2)
+        working-directory: dbt
+        run: dbt build --target local
+
+      - name: Sign-convention defense-in-depth check (testing-guide Phase 3 #3)
+        run: bash scripts/ci/check_sign_convention_dbt_test.sh
+        env:
+          DBT_TARGET: local
+
+      - name: dbt source freshness (smoke test only)
+        working-directory: dbt
+        # Freshness genuinely going stale is a *production* signal (nothing
+        # was ingested against Neon in a while) -- this step only confirms
+        # the freshness config itself still runs cleanly against
+        # just-ingested data. See scheduled-refresh.yml for the real check.
+        run: dbt source freshness --target local

@@ -1,0 +1,70 @@
+# Phase 4 scheduled orchestration -- the always-on half of the pipeline.
+#
+# What this does NOT do: ingest a new monthly workbook. The workbook is
+# real personal financial data, gitignored by design (see .gitignore and
+# PROJECT_PLAN.md's "Source data" row), so it never reaches GitHub Actions.
+# `python -m ingest.cli --env neon` after editing the workbook stays a
+# manual, local step -- see docs/phase-4-orchestration.md's "What this
+# doesn't automate" section for the reasoning.
+#
+# What this DOES do, on a schedule, against the real Neon database:
+#   1. Rebuild every dbt mart from whatever has already been ingested, so
+#      marts.fct_budget_actuals never drifts from transactions/budgets by
+#      more than one scheduled run.
+#   2. Run `dbt source freshness`, which fails the job (and by default
+#      triggers GitHub's failed-workflow notification) once `transactions`
+#      hasn't been touched in 90+ days -- the "make it loud automatically"
+#      follow-up docs/phase-3-transformation.md left open for this phase.
+name: Scheduled Neon Refresh
+
+on:
+  schedule:
+    # 13:17 UTC daily -- off the top of the hour on purpose, so this isn't
+    # competing with every other workflow on GitHub's infrastructure that
+    # scheduled itself for a round number. Adjust freely; nothing else
+    # depends on this exact time.
+    - cron: "17 13 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  refresh-neon-marts:
+    runs-on: ubuntu-latest
+    env:
+      NEON_PGHOST: ${{ secrets.NEON_PGHOST }}
+      NEON_PGUSER: ${{ secrets.NEON_PGUSER }}
+      NEON_PGPASSWORD: ${{ secrets.NEON_PGPASSWORD }}
+      NEON_PGDATABASE: ${{ secrets.NEON_PGDATABASE }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dbt dependencies
+        run: pip install -r dbt/requirements.txt
+
+      - name: Configure dbt profile
+        run: cp dbt/profiles.yml.example dbt/profiles.yml
+
+      - name: dbt deps
+        working-directory: dbt
+        run: dbt deps
+
+      - name: dbt debug (confirm Neon is reachable before building)
+        working-directory: dbt
+        run: dbt debug --target neon
+
+      - name: dbt build against Neon
+        working-directory: dbt
+        run: dbt build --target neon
+
+      - name: dbt source freshness against Neon
+        working-directory: dbt
+        # Non-zero exit on any source past its error_after threshold (90
+        # days for `transactions`, per
+        # dbt/models/staging/_staging__sources.yml) fails this step, and
+        # therefore this job -- that failure is the alert.
+        run: dbt source freshness --target neon
