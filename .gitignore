@@ -34,6 +34,7 @@ dbt/target/
 dbt/dbt_packages/
 dbt/dbt_modules/   # legacy package dir name, pre-dbt 1.0 -- harmless to keep
 dbt/logs/
+dbt/.user.yml
 
 # --- Editor / IDE ---
 .vscode/
