@@ -1,12 +1,12 @@
 # Personal Budget Data Pipeline
 
-[CI](https://github.com/TimPokanai/budget-data-pipeline/actions/workflows/ci.yml)
+[![CI](https://github.com/TimPokanai/budget-data-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/TimPokanai/budget-data-pipeline/actions/workflows/ci.yml)
 
 A personal monthly budget, originally tracked by hand in Excel, rebuilt as a proper
 data pipeline: normalized Postgres schema → automated ingestion → dbt transforms →
 scheduled orchestration → dashboard.
 
-**Stack:** PostgreSQL · Docker · Python · dbt · GitHub Actions · Neon (serverless Postgres)
+**Stack:** PostgreSQL · Docker · Python · dbt · GitHub Actions · Neon (serverless Postgres) · Streamlit
 
 ## Why this exists
 
@@ -19,16 +19,16 @@ as real infrastructure.
 ## Project phases
 
 
-| Phase | Focus                          | Doc                                                                |
-| ----- | ------------------------------ | ------------------------------------------------------------------ |
-| 1     | Schema design                  | `[docs/phase-1-schema-design.md](docs/phase-1-schema-design.md)`   |
-| 2     | Ingestion (Excel → Postgres)   | `[docs/phase-2-ingestion.md](docs/phase-2-ingestion.md)`           |
-| 3     | Transformation (dbt)           | `[docs/phase-3-transformation.md](docs/phase-3-transformation.md)` |
-| 4     | Orchestration (GitHub Actions) | `[docs/phase-4-orchestration.md](docs/phase-4-orchestration.md)`   |
-| 5     | Dashboard                      | `docs/phase-5-dashboard.md`                                        |
+| Phase | Focus                          | Doc                                                              |
+| ----- | ------------------------------ | ---------------------------------------------------------------- |
+| 1     | Schema design                  | [docs/phase-1-schema-design.md](docs/phase-1-schema-design.md) |
+| 2     | Ingestion (Excel → Postgres)   | [docs/phase-2-ingestion.md](docs/phase-2-ingestion.md)         |
+| 3     | Transformation (dbt)           | [docs/phase-3-transformation.md](docs/phase-3-transformation.md) |
+| 4     | Orchestration (GitHub Actions) | [docs/phase-4-orchestration.md](docs/phase-4-orchestration.md) |
+| 5     | Dashboard (Streamlit)          | [docs/phase-5-dashboard.md](docs/phase-5-dashboard.md)         |
 
 
-Full architecture decisions and conventions live in `[PROJECT_PLAN.md](PROJECT_PLAN.md)`.
+Full architecture decisions and conventions live in [PROJECT_PLAN.md](PROJECT_PLAN.md).
 
 ## Local development setup (macOS)
 
@@ -224,21 +224,52 @@ cd dbt && dbt build --target neon
 
 Two GitHub Actions workflows live in `.github/workflows/`:
 
-- `ci.yml` — runs the full Phases 1–3 regression suite from
-`docs/testing-guide.md` on every push and PR, against a throwaway Postgres
-service container and a synthetic fixture workbook (`scripts/ci/`). No setup
-required — it works on a fresh clone/fork with zero secrets.
-- `scheduled-refresh.yml` — runs daily against the real Neon database:
-rebuilds every dbt mart and runs `dbt source freshness`, so a stalled pipeline
-fails loudly instead of silently. Needs four repository secrets
-(`NEON_PGHOST`, `NEON_PGUSER`, `NEON_PGPASSWORD`, `NEON_PGDATABASE` — the same
-values already in your local `.env`) added under **Settings → Secrets and
-variables → Actions**.
+- **`ci.yml`** — runs the full Phases 1–3 regression suite from
+  `docs/testing-guide.md` on every push and PR, against a throwaway Postgres
+  service container and a synthetic fixture workbook (`scripts/ci/`). No setup
+  required — it works on a fresh clone/fork with zero secrets.
+- **`scheduled-refresh.yml`** — runs daily against the real Neon database:
+  rebuilds every dbt mart and runs `dbt source freshness`, so a stalled pipeline
+  fails loudly instead of silently. Needs four repository secrets
+  (`NEON_PGHOST`, `NEON_PGUSER`, `NEON_PGPASSWORD`, `NEON_PGDATABASE` — the same
+  values already in your local `.env`) added under **Settings → Secrets and
+  variables → Actions**.
 
 Real ingestion (`python -m ingest.cli --env neon`) stays a manual, local step after
 editing the workbook — see
-`[docs/phase-4-orchestration.md](docs/phase-4-orchestration.md)` for why, and for
+[docs/phase-4-orchestration.md](docs/phase-4-orchestration.md) for why, and for
 the full design rationale behind both workflows.
+
+## Dashboard (Phase 5)
+
+A private [Streamlit](https://streamlit.io) app in `dashboard/` reads directly from
+`marts.fct_budget_actuals` / `marts.fct_transactions` on Neon and replaces the source
+workbook's `Monthly Budget Summary` sheet as the thing actually looked at day to day —
+plus a transaction-level drill-down and multi-month trends the sheet never supported.
+
+```bash
+# One-time: create the read-only role the dashboard connects as
+psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 \
+     -v dashboard_password="a-strong-password" \
+     -f db/grant_dashboard_readonly.sql
+
+# Local dev
+cd dashboard
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # fill in, gitignored
+streamlit run streamlit_app.py
+```
+
+It connects as `budget_dashboard`, a dedicated role that can only `SELECT` from the
+`marts` schema — never `budget_admin`, and never anything in `staging` or `public`.
+The deployed app is hosted free on Streamlit Community Cloud but kept **private** via
+its per-app viewer-email restriction, decoupled from this repo's own visibility (the
+repo can stay public; the live financial data doesn't have to be).
+
+See [docs/phase-5-dashboard.md](docs/phase-5-dashboard.md) for the full design
+rationale, and [dashboard/README.md](dashboard/README.md) for the deployment
+walkthrough.
 
 ## Docker command reference
 

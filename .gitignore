@@ -34,7 +34,13 @@ dbt/target/
 dbt/dbt_packages/
 dbt/dbt_modules/   # legacy package dir name, pre-dbt 1.0 -- harmless to keep
 dbt/logs/
-dbt/.user.yml
+
+# --- Dashboard (Phase 5) ---
+# Same rule as .env / dbt/profiles.yml -- real credentials for the
+# budget_dashboard role live here locally, never in the repo. Streamlit
+# Community Cloud gets the production equivalent through its own Secrets
+# UI, not this file. See docs/phase-5-dashboard.md.
+dashboard/.streamlit/secrets.toml
 
 # --- Editor / IDE ---
 .vscode/
