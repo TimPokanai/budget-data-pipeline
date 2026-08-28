@@ -20,6 +20,8 @@ orchestration, and a dashboard, with an optional ML layer once the pipeline is s
 | Migration tool          | [dbmate](https://github.com/amacneil/dbmate)                  | Single static binary, database-agnostic, plain versioned SQL (no ORM abstraction to explain), applies identically to local Docker and Neon.                                                               |
 | Transformation tool     | [dbt](https://www.getdbt.com) (`dbt-postgres` adapter)        | Versioned, tested SQL models instead of the workbook's `SUMIFS`/`Difference` formulas; same local/Neon split as everything else, via `--target`.                                                          |
 | Orchestration (Phase 4) | GitHub Actions, scheduled workflow                            | Free compute, runs without a personal machine powered on, doubles as CI/CD experience on the resume.                                                                                                      |
+| Dashboard tool (Phase 5) | [Streamlit](https://streamlit.io), on Streamlit Community Cloud | Free tier, and a real Python application (connection handling, caching, multi-page routing) rather than point-and-click BI config. Same language as the Phase 2 ingestion CLI. See `docs/phase-5-dashboard.md`.|
+| Dashboard DB access (Phase 5) | Dedicated `budget_dashboard` role, `SELECT`-only on `marts`, direct to Neon — no API layer | Postgres enforces the read-only boundary itself rather than trusting application code; an API layer would be a second free-tier service to host and secure for a problem a database role already solves. |
 | Amount convention       | Signed `NUMERIC(10,2)`, positive = income, negative = expense | Inherited directly from the source workbook — avoids a redundant transaction-type column when the sign already encodes it.                                                                                |
 
 
@@ -33,9 +35,21 @@ budget-pipeline/
 │   └── workflows/
 │       ├── ci.yml                  # push/PR regression suite, ephemeral Postgres
 │       └── scheduled-refresh.yml   # daily dbt build + source freshness, Neon
+├── dashboard/
+│   ├── streamlit_app.py      # Home page -- budget overview
+│   ├── db.py                 # get_connection() -- reads secrets.toml's `target`
+│   ├── queries.py             # every SQL query the app runs, all against marts.*
+│   ├── requirements.txt
+│   ├── README.md
+│   ├── pages/
+│   │   ├── 1_Transactions.py
+│   │   └── 2_Trends.py
+│   └── .streamlit/
+│       └── secrets.toml.example   # copy to secrets.toml, gitignored
 ├── db/
 │   ├── migrations/          # versioned schema, dbmate-managed
-│   └── seed_categories.sql  # reference data
+│   ├── seed_categories.sql  # reference data
+│   └── grant_dashboard_readonly.sql  # creates + grants the budget_dashboard role
 ├── dbt/
 │   ├── dbt_project.yml
 │   ├── packages.yml         # dbt_utils
@@ -51,7 +65,7 @@ budget-pipeline/
 │   ├── phase-2-ingestion.md
 │   ├── phase-3-transformation.md
 │   ├── phase-4-orchestration.md
-│   ├── phase-5-dashboard.md
+│   ├── phase-5-dashboard.md     # this phase
 │   ├── phase-6-ml.md
 │   └── testing-guide.md
 ├── ingest/
@@ -106,6 +120,9 @@ otherwise and explains why — silent data loss on a personal finance dataset is
 worse than a blocked delete.
 - dbt staging models: `stg_<source_table>`, 1:1 grain, renaming/casting only.
   dbt marts: `dim_<entity>` / `fct_<entity>`. See `docs/phase-3-transformation.md`.
+- Postgres roles: `budget_<purpose>` — `budget_admin` (full access, the app/pipeline
+  user) and `budget_dashboard` (read-only, `marts` schema only). See
+  `docs/phase-5-dashboard.md`.
 
 
 
