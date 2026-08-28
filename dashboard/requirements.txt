@@ -1,0 +1,15 @@
+# Kept separate from the root requirements.txt (ingest/'s dependencies) and
+# dbt/requirements.txt, same reasoning as dbt/requirements.txt: three tools,
+# three sets of pinned transitive dependencies (Streamlit pulls in its own
+# Tornado/Altair/etc. stack), isolated so one doesn't fight another's pins
+# in a shared environment.
+#
+#   cd dashboard
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+#
+streamlit>=1.38,<2.0
+pandas>=2.2
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+plotly>=5.24
