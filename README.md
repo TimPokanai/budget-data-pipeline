@@ -1,6 +1,6 @@
 # Personal Budget Data Pipeline
 
-[![CI](https://github.com/TimPokanai/budget-data-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/TimPokanai/budget-data-pipeline/actions/workflows/ci.yml)
+[CI](https://github.com/TimPokanai/budget-data-pipeline/actions/workflows/ci.yml)
 
 A personal monthly budget, originally tracked by hand in Excel, rebuilt as a proper
 data pipeline: normalized Postgres schema → automated ingestion → dbt transforms →
@@ -21,11 +21,11 @@ as real infrastructure.
 
 | Phase | Focus                          | Doc                                                              |
 | ----- | ------------------------------ | ---------------------------------------------------------------- |
-| 1     | Schema design                  | [docs/phase-1-schema-design.md](docs/phase-1-schema-design.md) |
-| 2     | Ingestion (Excel → Postgres)   | [docs/phase-2-ingestion.md](docs/phase-2-ingestion.md)         |
+| 1     | Schema design                  | [docs/phase-1-schema-design.md](docs/phase-1-schema-design.md)   |
+| 2     | Ingestion (Excel → Postgres)   | [docs/phase-2-ingestion.md](docs/phase-2-ingestion.md)           |
 | 3     | Transformation (dbt)           | [docs/phase-3-transformation.md](docs/phase-3-transformation.md) |
-| 4     | Orchestration (GitHub Actions) | [docs/phase-4-orchestration.md](docs/phase-4-orchestration.md) |
-| 5     | Dashboard (Streamlit)          | [docs/phase-5-dashboard.md](docs/phase-5-dashboard.md)         |
+| 4     | Orchestration (GitHub Actions) | [docs/phase-4-orchestration.md](docs/phase-4-orchestration.md)   |
+| 5     | Dashboard (Streamlit)          | [docs/phase-5-dashboard.md](docs/phase-5-dashboard.md)           |
 
 
 Full architecture decisions and conventions live in [PROJECT_PLAN.md](PROJECT_PLAN.md).
@@ -224,16 +224,16 @@ cd dbt && dbt build --target neon
 
 Two GitHub Actions workflows live in `.github/workflows/`:
 
-- **`ci.yml`** — runs the full Phases 1–3 regression suite from
-  `docs/testing-guide.md` on every push and PR, against a throwaway Postgres
-  service container and a synthetic fixture workbook (`scripts/ci/`). No setup
-  required — it works on a fresh clone/fork with zero secrets.
-- **`scheduled-refresh.yml`** — runs daily against the real Neon database:
-  rebuilds every dbt mart and runs `dbt source freshness`, so a stalled pipeline
-  fails loudly instead of silently. Needs four repository secrets
-  (`NEON_PGHOST`, `NEON_PGUSER`, `NEON_PGPASSWORD`, `NEON_PGDATABASE` — the same
-  values already in your local `.env`) added under **Settings → Secrets and
-  variables → Actions**.
+- `ci.yml` — runs the full Phases 1–3 regression suite from
+`docs/testing-guide.md` on every push and PR, against a throwaway Postgres
+service container and a synthetic fixture workbook (`scripts/ci/`). No setup
+required — it works on a fresh clone/fork with zero secrets.
+- `scheduled-refresh.yml` — runs daily against the real Neon database:
+rebuilds every dbt mart and runs `dbt source freshness`, so a stalled pipeline
+fails loudly instead of silently. Needs four repository secrets
+(`NEON_PGHOST`, `NEON_PGUSER`, `NEON_PGPASSWORD`, `NEON_PGDATABASE` — the same
+values already in your local `.env`) added under **Settings → Secrets and
+variables → Actions**.
 
 Real ingestion (`python -m ingest.cli --env neon`) stays a manual, local step after
 editing the workbook — see

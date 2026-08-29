@@ -29,16 +29,27 @@
 -- Whatever password you pick here is what goes into
 -- dashboard/.streamlit/secrets.toml (see secrets.toml.example) -- never
 -- into .env or dbt/profiles.yml, and never committed.
+--
+-- IMPLEMENTATION NOTE: this deliberately avoids a `DO $$ ... $$` /
+-- PL/pgSQL block for the "create or alter" branch. psql expands
+-- :'dashboard_password' as plain text substitution BEFORE the script ever
+-- reaches the server -- but it does not perform that substitution on text
+-- sitting inside a dollar-quoted ($$ ... $$) string, and a DO block's body
+-- is exactly that. The result is a syntax error: the literal,
+-- unsubstituted ":'dashboard_password'" text gets sent to Postgres, which
+-- has no idea what psql's `:` syntax means. Using psql's own \if/\gset
+-- meta-commands instead keeps CREATE ROLE / ALTER ROLE as plain top-level
+-- statements, which is where psql actually expands the variable.
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'budget_dashboard') THEN
-        CREATE ROLE budget_dashboard WITH LOGIN PASSWORD :'dashboard_password';
-    ELSE
-        ALTER ROLE budget_dashboard WITH LOGIN PASSWORD :'dashboard_password';
-    END IF;
-END
-$$;
+SELECT CASE WHEN EXISTS (SELECT FROM pg_roles WHERE rolname = 'budget_dashboard')
+            THEN 'true' ELSE 'false' END AS role_exists
+\gset
+
+\if :role_exists
+ALTER ROLE budget_dashboard WITH LOGIN PASSWORD :'dashboard_password';
+\else
+CREATE ROLE budget_dashboard WITH LOGIN PASSWORD :'dashboard_password';
+\endif
 
 GRANT CONNECT ON DATABASE budget_pipeline TO budget_dashboard;
 GRANT USAGE ON SCHEMA marts TO budget_dashboard;
@@ -52,6 +63,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA marts GRANT SELECT ON TABLES TO budget_dashbo
 
 -- Explicit, not just "a fresh role has no grants by default" -- states the
 -- boundary in the script itself so a future reader sees the intent, not
--- just the absence of a grant.
+-- just the absence of a grant. Also safe as a no-op on a fresh role that
+-- never had these privileges to begin with.
 REVOKE ALL ON SCHEMA staging FROM budget_dashboard;
 REVOKE ALL ON SCHEMA public FROM budget_dashboard;
